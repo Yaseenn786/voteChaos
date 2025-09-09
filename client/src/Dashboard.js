@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import io from "socket.io-client";
 
 // Components
 import PlayOptionsModal from "./components/PlayOptionsModal";
@@ -8,6 +9,7 @@ import EnterNameModal from "./components/EnterNameModal";
 import GameModeModal from "./components/GameModeModal";
 import JoinRoomModal from "./components/JoinRoomModal";
 import ClassicVoteSetupModal from "./components/ClassicVoteSetupModal";
+import PredictionSetupModal from "./components/PredictionSetupModal"; // 🔮 NEW
 
 function getAvatar(email) {
   if (!email) return "🤪";
@@ -15,6 +17,8 @@ function getAvatar(email) {
   const emojis = ["😎", "🔥", "😂", "🤯", "🥳"];
   return emojis[first.charCodeAt(0) % emojis.length];
 }
+
+const socket = io("http://localhost:5050");
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
@@ -29,6 +33,7 @@ export default function Dashboard({ user }) {
   const [nickname, setNickname] = useState(user?.nickname || "");
   const [selectedMode, setSelectedMode] = useState(null);
   const [showClassicSetup, setShowClassicSetup] = useState(false);
+  const [showPredictionSetup, setShowPredictionSetup] = useState(false); // 🔮 NEW
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Games
@@ -37,7 +42,7 @@ export default function Dashboard({ user }) {
 
   const API_URL = "http://localhost:5050/api";
 
-  // Update nickname in database
+  // Update nickname in DB
   const updateNicknameInDB = async (newNickname) => {
     try {
       setIsUpdating(true);
@@ -63,7 +68,7 @@ export default function Dashboard({ user }) {
     }
   };
 
-  // ✅ Fetch games from backend (split: current + past)
+  // ✅ Fetch games
   useEffect(() => {
     const fetchGames = async () => {
       if (!user?._id) return;
@@ -82,8 +87,28 @@ export default function Dashboard({ user }) {
     };
 
     fetchGames();
-    const interval = setInterval(fetchGames, 5000); // auto-refresh
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchGames, 5000);
+
+    // ✅ Live socket update
+    socket.on("gameStatusUpdate", ({ roomCode, status }) => {
+      if (status === "finished") {
+        setCurrentGames((prev) => {
+          const finishedGame = prev.find((g) => g.roomCode === roomCode);
+          if (finishedGame) {
+            setPastGames((p) => [
+              { ...finishedGame, status: "finished" },
+              ...p,
+            ]);
+          }
+          return prev.filter((g) => g.roomCode !== roomCode);
+        });
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.off("gameStatusUpdate");
+    };
   }, [user?._id]);
 
   // Logout
@@ -98,7 +123,7 @@ export default function Dashboard({ user }) {
   const favEmoji = "🔥";
   const chaosLevel = Math.min(100, gamesPlayed * 5 + 20);
 
-  // Handle name submission
+  // Handle nickname submission
   const handleNameSubmit = async (submittedNickname) => {
     const updatedUser = await updateNicknameInDB(submittedNickname);
     setNickname(updatedUser.nickname);
@@ -118,14 +143,35 @@ export default function Dashboard({ user }) {
 
       {/* Navbar */}
       <nav className="flex justify-between items-center px-12 py-5 bg-[#141414] border-b border-orange-500/40 shadow-lg">
-        <span className="text-2xl font-extrabold text-orange-400 tracking-tight">VoteChaos</span>
+        <span className="text-2xl font-extrabold text-orange-400 tracking-tight">
+          VoteChaos
+        </span>
         <div className="flex items-center gap-5 text-lg">
-          <button className="hover:text-orange-400" onClick={() => navigate("/dashboard")}>Dashboard</button>
-          <button className="hover:text-orange-400" onClick={() => setShowPlayOptions(true)}>Play Game</button>
-          <button className="hover:text-orange-400" onClick={() => window.scrollTo({ top: 600, behavior: "smooth" })}>Past Games</button>
+          <button
+            className="hover:text-orange-400"
+            onClick={() => navigate("/dashboard")}
+          >
+            Dashboard
+          </button>
+          <button
+            className="hover:text-orange-400"
+            onClick={() => setShowPlayOptions(true)}
+          >
+            Play Game
+          </button>
+          <button
+            className="hover:text-orange-400"
+            onClick={() => window.scrollTo({ top: 600, behavior: "smooth" })}
+          >
+            Past Games
+          </button>
           <span className="flex items-center gap-2">
-            <span className="text-2xl rounded-full p-2 bg-[#222] shadow-inner border-4 border-orange-400 animate-avatar-glow">{avatar}</span>
-            <span className="text-sm text-gray-400 hidden sm:inline">{nickname || email}</span>
+            <span className="text-2xl rounded-full p-2 bg-[#222] shadow-inner border-4 border-orange-400 animate-avatar-glow">
+              {avatar}
+            </span>
+            <span className="text-sm text-gray-400 hidden sm:inline">
+              {nickname || email}
+            </span>
           </span>
           <button
             className="bg-orange-400 hover:bg-orange-500 text-black font-semibold rounded-lg px-5 py-2 ml-2"
@@ -142,13 +188,20 @@ export default function Dashboard({ user }) {
         <div className="flex-1 flex flex-col gap-8">
           <div>
             <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-              <span>Welcome, <span className="text-orange-400">{nickname || email.split("@")[0]}</span>!</span>
+              <span>
+                Welcome,{" "}
+                <span className="text-orange-400">
+                  {nickname || email.split("@")[0]}
+                </span>
+                !
+              </span>
               <span className="animate-wave origin-[70%_70%]">👋</span>
             </h1>
 
             <div className="flex gap-3 mt-2 mb-4">
               <div className="bg-orange-400/10 px-4 py-1 rounded-lg text-orange-300 font-semibold flex items-center gap-2">
-                Games Played: <span className="text-orange-400 font-bold">{gamesPlayed}</span>
+                Games Played:{" "}
+                <span className="text-orange-400 font-bold">{gamesPlayed}</span>
               </div>
               <div className="bg-orange-400/10 px-4 py-1 rounded-lg text-orange-300 font-semibold flex items-center gap-2">
                 Favorite Emoji: <span className="text-xl">{favEmoji}</span>
@@ -182,7 +235,10 @@ export default function Dashboard({ user }) {
 
         {/* Right: Games */}
         <div className="flex-1 bg-[#181818] rounded-2xl p-8 border border-orange-500/20 shadow-xl min-w-[340px]">
-          <h2 className="text-2xl font-bold mb-6 text-orange-400">Current Games</h2>
+          {/* Current Games */}
+          <h2 className="text-2xl font-bold mb-6 text-orange-400">
+            Current Games
+          </h2>
           {currentGames.length === 0 ? (
             <div className="text-gray-500 italic mb-6">No current games</div>
           ) : (
@@ -193,12 +249,35 @@ export default function Dashboard({ user }) {
               >
                 <div className="font-semibold">{game.question}</div>
                 <div className="text-sm text-gray-400">Room: #{game.roomCode}</div>
-                <div className="text-xs text-green-400">Status: Voting</div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-xs text-green-400">
+                    Status: {game.status}
+                  </span>
+                  <button
+                    onClick={() =>
+                      navigate(`/room/${game.roomCode}`, {
+                        state: {
+                          user,
+                          playerId: user._id,
+                          nickname,
+                          roomCode: game.roomCode,
+                          isHost: game.host?.id === user._id,
+                        },
+                      })
+                    }
+                    className="text-orange-400 hover:text-orange-500 underline text-xs font-semibold"
+                  >
+                    Enter
+                  </button>
+                </div>
               </div>
             ))
           )}
 
-          <h2 className="text-2xl font-bold mb-6 text-orange-400 mt-6">Past Chaos Games</h2>
+          {/* Past Games */}
+          <h2 className="text-2xl font-bold mb-6 text-orange-400 mt-6">
+            Past Chaos Games
+          </h2>
           {pastGames.length === 0 ? (
             <div className="text-gray-500 italic">No past games yet</div>
           ) : (
@@ -209,13 +288,32 @@ export default function Dashboard({ user }) {
               >
                 <div className="font-semibold">{game.question}</div>
                 <div className="text-sm text-gray-400">
-                  Winner: <span className="text-orange-400">{game.winner || "TBD"}</span>
+                  Winner:{" "}
+                  <span className="text-orange-400">
+                    {game.winner || "TBD"}
+                  </span>
                 </div>
                 <div className="text-xs text-gray-600">
                   {new Date(game.createdAt).toLocaleString()}
                 </div>
-                <div className="text-xs font-mono bg-orange-400 text-black px-2 py-0.5 rounded mt-1 inline-block">
-                  #{game.roomCode}
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-xs text-pink-400">Status: Finished</span>
+                  <button
+                    onClick={() =>
+                      navigate(`/room/${game.roomCode}`, {
+                        state: {
+                          user,
+                          nickname,
+                          roomCode: game.roomCode,
+                          isHost: game.host?.id === user._id,
+                          viewResults: true,
+                        },
+                      })
+                    }
+                    className="text-orange-400 hover:text-orange-500 underline text-xs font-semibold"
+                  >
+                    View Results
+                  </button>
                 </div>
               </div>
             ))
@@ -258,6 +356,8 @@ export default function Dashboard({ user }) {
 
             if (mode === "classic") {
               setShowClassicSetup(true);
+            } else if (mode === "prediction") {
+              setShowPredictionSetup(true); // 🔮 open prediction modal
             } else {
               const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
               navigate("/game", {
@@ -296,6 +396,14 @@ export default function Dashboard({ user }) {
           onClose={() => setShowClassicSetup(false)}
           user={user}
           nickname={nickname}
+        />
+      )}
+
+      {showPredictionSetup && (
+        <PredictionSetupModal
+          roomCode={Math.floor(1000 + Math.random() * 9000).toString()}
+          socket={socket}
+          onClose={() => setShowPredictionSetup(false)}
         />
       )}
 
