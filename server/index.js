@@ -15,12 +15,12 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-const corsOptions = {
-  origin: ["https://votechaos.com", "http://localhost:3000"], // allow prod + local
-  credentials: true
-};
-app.use(cors(corsOptions));
-
+const io = new Server(server, {
+  cors: {
+    origin: ["http://localhost:3000", "https://votechaos.com"],
+    methods: ["GET", "POST"],
+  },
+});
 
 app.use(cors());
 app.use("/api/user", userRoutes);
