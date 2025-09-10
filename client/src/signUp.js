@@ -9,11 +9,15 @@ export default function Signup() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
 
-  const API_URL = "http://localhost:5050/api/signup";
+  const API_BASE =
+    process.env.NODE_ENV === "production"
+      ? "https://votechaos.com/api"
+      : "http://localhost:5050/api";
 
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
+
     if (!email || !password || !confirm) {
       setError("Please fill out all fields!");
       return;
@@ -22,21 +26,23 @@ export default function Signup() {
       setError("Passwords do not match!");
       return;
     }
+
     try {
-      const res = await axios.post(API_URL, { email, password });
-      // Save user & token to localStorage
+      const res = await axios.post(`${API_BASE}/signup`, {
+        email: email.toLowerCase().trim(),
+        password,
+      });
+
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
-      
+
       navigate("/dashboard");
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-        "Signup failed. Try a different email."
+        err.response?.data?.message || "Signup failed. Try a different email."
       );
     }
   };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-black">
       <div className="w-full max-w-md bg-gradient-to-br from-[#181818] to-black/80 rounded-3xl shadow-2xl border border-orange-400/30 px-8 py-10 flex flex-col items-center"
