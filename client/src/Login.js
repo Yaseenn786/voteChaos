@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { api } from "./services/api"; // ✅ use centralized API service
+import { api } from "./services/api"; // ✅ centralized API service
 
 export default function Login({ setUser }) {
   const navigate = useNavigate();
@@ -10,8 +10,11 @@ export default function Login({ setUser }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Backend API URL
-  const API_URL = "http://localhost:5050/api/login";
+  // ✅ Dynamically pick API base URL
+  const API_BASE =
+    process.env.NODE_ENV === "production"
+      ? "https://votechaos.com"
+      : "http://localhost:5050";
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -26,11 +29,11 @@ export default function Login({ setUser }) {
 
     try {
       // 🔑 Step 1: Authenticate
-      const res = await axios.post(API_URL, { 
-        email: email.toLowerCase().trim(), 
-        password 
+      const res = await axios.post(`${API_BASE}/api/login`, {
+        email: email.toLowerCase().trim(),
+        password,
       });
-      
+
       localStorage.setItem("token", res.data.token); // ✅ save token only
 
       // 🔑 Step 2: Fetch user profile fresh from DB
@@ -45,7 +48,7 @@ export default function Login({ setUser }) {
       console.error("Login error:", err);
       setError(
         err.response?.data?.message ||
-        "Login failed. Please check your credentials."
+          "Login failed. Please check your credentials."
       );
     } finally {
       setLoading(false);
