@@ -68,62 +68,102 @@ export default function Dashboard({ user }) {
     }
   };
 
-  // ✅ Fetch games
   useEffect(() => {
     const fetchGames = async () => {
       if (!user?._id) return;
-
       try {
         const [currentRes, pastRes] = await Promise.all([
           axios.get(`${API_URL}/games/current/${user._id}`),
           axios.get(`${API_URL}/games/past/${user._id}`),
         ]);
-
         if (currentRes.data.success) setCurrentGames(currentRes.data.games);
         if (pastRes.data.success) setPastGames(pastRes.data.games);
       } catch (err) {
         console.error("Error loading games:", err);
       }
     };
-
+  
     fetchGames();
     const interval = setInterval(fetchGames, 5000);
-
-    // ✅ Live socket update
+  
+    
+    socket.on("roundEnded", ({ roomCode }) => {
+      setCurrentGames((prev) => {
+        const finishedGame = prev.find((g) => g.roomCode === roomCode);
+        if (finishedGame) {
+          setPastGames((p) => [{ ...finishedGame, status: "finished" }, ...p]);
+        }
+        return prev.filter((g) => g.roomCode !== roomCode);
+      });
+    });
+  
+    
+    socket.on("predictionStarted", ({ roomCode, question, options, hostId, hostName }) => {
+      setCurrentGames((prev) => {
+        if (prev.find((g) => g.roomCode === roomCode)) return prev;
+        return [
+          {
+            roomCode,
+            question,
+            options,
+            status: "prediction",
+            mode: "prediction",
+            host: { id: hostId, name: hostName },
+          },
+          ...prev,
+        ];
+      });
+    });
+    
+  
+    
+    socket.on("predictionEnded", ({ roomCode }) => {
+      setCurrentGames((prev) => {
+        const finishedGame = prev.find((g) => g.roomCode === roomCode);
+        if (finishedGame) {
+          setPastGames((p) => [{ ...finishedGame, status: "finished" }, ...p]);
+        }
+        return prev.filter((g) => g.roomCode !== roomCode);
+      });
+    });
+  
+    
     socket.on("gameStatusUpdate", ({ roomCode, status }) => {
       if (status === "finished") {
         setCurrentGames((prev) => {
           const finishedGame = prev.find((g) => g.roomCode === roomCode);
           if (finishedGame) {
-            setPastGames((p) => [
-              { ...finishedGame, status: "finished" },
-              ...p,
-            ]);
+            setPastGames((p) => [{ ...finishedGame, status: "finished" }, ...p]);
           }
           return prev.filter((g) => g.roomCode !== roomCode);
         });
       }
     });
-
+  
     return () => {
       clearInterval(interval);
+      socket.off("roundEnded");
+      socket.off("predictionStarted");
+      socket.off("predictionEnded");
       socket.off("gameStatusUpdate");
     };
-  }, [user?._id]);
+  }, [user?._id, nickname]);
+  
+  
 
-  // Logout
+  
   const handleLogout = () => {
     localStorage.clear();
     navigate("/login");
   };
 
-  // Avatar
+  
   const avatar = getAvatar(email);
   const gamesPlayed = pastGames.length + currentGames.length;
   const favEmoji = "🔥";
   const chaosLevel = Math.min(100, gamesPlayed * 5 + 20);
 
-  // Handle nickname submission
+  
   const handleNameSubmit = async (submittedNickname) => {
     const updatedUser = await updateNicknameInDB(submittedNickname);
     setNickname(updatedUser.nickname);
@@ -138,10 +178,10 @@ export default function Dashboard({ user }) {
 
   return (
     <div className="min-h-screen bg-black text-white relative overflow-x-hidden">
-      {/* Top Glow */}
+      
       <div className="w-full h-2 bg-gradient-to-r from-orange-400 via-pink-500 to-yellow-400 animate-pulse blur-sm opacity-60"></div>
 
-      {/* Navbar */}
+      
       <nav className="flex justify-between items-center px-12 py-5 bg-[#141414] border-b border-orange-500/40 shadow-lg">
         <span className="text-2xl font-extrabold text-orange-400 tracking-tight">
           VoteChaos
@@ -182,9 +222,9 @@ export default function Dashboard({ user }) {
         </div>
       </nav>
 
-      {/* Content */}
+      
       <div className="flex flex-col md:flex-row gap-10 px-16 py-14 max-w-6xl mx-auto">
-        {/* Left */}
+        
         <div className="flex-1 flex flex-col gap-8">
           <div>
             <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
@@ -233,9 +273,9 @@ export default function Dashboard({ user }) {
           </div>
         </div>
 
-        {/* Right: Games */}
+        
         <div className="flex-1 bg-[#181818] rounded-2xl p-8 border border-orange-500/20 shadow-xl min-w-[340px]">
-          {/* Current Games */}
+          
           <h2 className="text-2xl font-bold mb-6 text-orange-400">
             Current Games
           </h2>
@@ -274,7 +314,7 @@ export default function Dashboard({ user }) {
             ))
           )}
 
-          {/* Past Games */}
+          
           <h2 className="text-2xl font-bold mb-6 text-orange-400 mt-6">
             Past Chaos Games
           </h2>
@@ -321,7 +361,7 @@ export default function Dashboard({ user }) {
         </div>
       </div>
 
-      {/* Modals */}
+      
       {showPlayOptions && (
         <PlayOptionsModal
           onClose={() => setShowPlayOptions(false)}
@@ -357,7 +397,7 @@ export default function Dashboard({ user }) {
             if (mode === "classic") {
               setShowClassicSetup(true);
             } else if (mode === "prediction") {
-              setShowPredictionSetup(true); // 🔮 open prediction modal
+              setShowPredictionSetup(true); 
             } else {
               const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
               navigate("/game", {
@@ -381,6 +421,7 @@ export default function Dashboard({ user }) {
             navigate(`/room/${roomCode}`, {
               state: {
                 user: { ...user, nickname },
+                playerId: user._id, 
                 roomCode,
                 isHost: false,
                 nickname,
@@ -399,15 +440,18 @@ export default function Dashboard({ user }) {
         />
       )}
 
-      {showPredictionSetup && (
-        <PredictionSetupModal
-          roomCode={Math.floor(1000 + Math.random() * 9000).toString()}
-          socket={socket}
-          onClose={() => setShowPredictionSetup(false)}
-        />
-      )}
+{showPredictionSetup && (
+  <PredictionSetupModal
+    roomCode={Math.floor(1000 + Math.random() * 9000).toString()}
+    socket={socket}
+    onClose={() => setShowPredictionSetup(false)}
+    user={user}          
+    nickname={nickname}  
+  />
+)}
 
-      {/* Background Glows */}
+
+      
       <div className="fixed -z-10 top-0 left-0 w-full h-full pointer-events-none">
         <div className="absolute top-[10%] left-[5%] w-80 h-80 bg-orange-500/10 blur-3xl rounded-full animate-pulse"></div>
         <div className="absolute bottom-[15%] right-[10%] w-96 h-96 bg-pink-500/10 blur-3xl rounded-full animate-pulse"></div>

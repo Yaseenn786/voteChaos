@@ -48,7 +48,7 @@ export default function CreateRoomModal({ open, onClose, onSubmit, roomCode }) {
       .filter(q => q.text !== "" && q.options.length >= 2);
 
     if (cleaned.length > 0) {
-      onSubmit(cleaned); // return structured questions with options
+      onSubmit(cleaned); 
       onClose();
     } else {
       alert("Please enter at least one valid question with 2+ options.");

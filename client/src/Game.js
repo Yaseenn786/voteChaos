@@ -3,6 +3,8 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import io from "socket.io-client";
 import Confetti from "react-confetti";
 import { Howl } from "howler";
+import GameCreated from "./components/GameCreated";
+
 
 const socket = io("http://localhost:5050");
 
@@ -14,7 +16,7 @@ export default function Game() {
   // ✅ Player info
   const [playerId, setPlayerId] = useState(null);
   const nickname = state?.nickname || state?.user?.nickname || "Anonymous";
-  const userId = state?.user?._id || null; // Mongo userId if logged in
+  const userId = state?.user?._id || null;
   const isHost = state?.isHost || false;
   const viewResults = state?.viewResults || false;
 
@@ -28,6 +30,11 @@ export default function Game() {
 
   // Chaos state
   const [showVoteSuccess, setShowVoteSuccess] = useState(false);
+  const [showPredictionSuccess, setShowPredictionSuccess] = useState(false);
+
+  // 🔮 Host confirm modal
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [pendingCorrectOption, setPendingCorrectOption] = useState(null);
 
   // ✅ Confetti size
   const [windowSize, setWindowSize] = useState({
@@ -50,7 +57,7 @@ export default function Game() {
     sound.play();
   };
 
-  // ✅ Fetch game
+  // ✅ Fetch game (initial load)
   useEffect(() => {
     const fetchGame = async () => {
       try {
@@ -58,6 +65,19 @@ export default function Game() {
         const data = await res.json();
         if (data.success) {
           setGameData(data.game);
+          console.log("🎮 FetchGame:", {
+            userId,
+            gameId: data?.game?._id,
+            nickname,
+          });
+          
+          if (userId && data?.game?._id) {
+            fetch(`http://localhost:5050/api/user/${userId}/currentGames`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ gameId: data.game._id }),
+            }).catch((err) => console.error("Error saving currentGame:", err));
+          }
 
           if (data.game.status === "voting") {
             const remaining = Math.max(
@@ -86,25 +106,38 @@ export default function Game() {
     fetchGame();
   }, [roomCode]);
 
-  // 🎮 Socket connections
+  
   useEffect(() => {
-    socket.emit("joinRoom", { roomCode, nickname, userId });
-
-    // After join → save to user's currentGames
     if (userId && gameData?._id) {
       fetch(`http://localhost:5050/api/user/${userId}/currentGames`, {
+        
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId: gameData._id }),
-      }).catch((err) => console.error("Error saving currentGame:", err));
+      }).catch((err) =>
+        console.error("Error saving currentGame (joiner):", err)
+      );
     }
+  }, [userId, gameData?._id]);
+
+  
+  useEffect(() => {
+    socket.emit("joinRoom", { roomCode, nickname, userId });
 
     socket.on("playerInfo", ({ playerId }) => {
       setPlayerId(playerId);
     });
 
+    // 🎮 Classic start
     socket.on("gameStarted", ({ question, options, roundTime }) => {
-      setGameData((prev) => ({ ...prev, question, options, status: "voting" }));
+      setGameData((prev) => ({
+        ...prev,
+        question,
+        options,
+        status: "voting",
+        mode: "classic",
+      }));
       setRoundActive(true);
       setResults(null);
       setHasVoted(false);
@@ -122,6 +155,7 @@ export default function Game() {
       }, 1000);
     });
 
+    // 🎮 Classic end
     socket.on("roundEnded", ({ votes, results, winner }) => {
       setRoundActive(false);
       setResults({ question: gameData?.question, votes, results, winner });
@@ -131,21 +165,52 @@ export default function Game() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ gameId: gameData._id }),
-        }).catch((err) => console.error("Error moving to pastGames:", err));
+        }).catch((err) =>
+          console.error("Error moving to pastGames:", err)
+        );
       }
     });
 
-    // 🔮 Prediction events
+    // 🔮 Prediction start
     socket.on("predictionStarted", ({ question, options }) => {
-      setGameData((prev) => ({ ...prev, question, options, status: "prediction" }));
+      setGameData((prev) => ({
+        ...prev,
+        question,
+        options,
+        status: "prediction",
+        mode: "prediction",
+      }));
       setHasVoted(false);
       setSelectedOption(null);
       setResults(null);
     });
 
-    socket.on("predictionEnded", ({ correctOption, winners, scores }) => {
-      setResults({ correctOption, winners, scores });
+    // 🔮 Prediction end
+    socket.on("predictionEnded", ({ question, correctOption, winners, scores }) => {
+      console.log("📩 predictionEnded payload:", {
+        question,
+        correctOption,
+        winners,
+        scores,
+      });
+
+      setResults({
+        question: question || gameData?.question || "",
+        correctOption,
+        winners: Array.isArray(winners) ? winners : [],
+        scores: scores && typeof scores === "object" ? scores : {},
+      });
       setRoundActive(false);
+
+      if (userId && gameData?._id) {
+        fetch(`http://localhost:5050/api/user/${userId}/moveToPast`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gameId: gameData._id }),
+        }).catch((err) =>
+          console.error("Error moving to pastGames:", err)
+        );
+      }
     });
 
     return () => {
@@ -162,15 +227,11 @@ export default function Game() {
     if (hasVoted || !option || !roundActive || !playerId) return;
     setSelectedOption(option);
     setHasVoted(true);
-
     socket.emit("submitVote", { roomCode, option, playerId, nickname });
 
     playSound();
     setShowVoteSuccess(true);
-
-    setTimeout(() => {
-      navigate("/dashboard");
-    }, 3000);
+    setTimeout(() => navigate("/dashboard"), 3000);
   };
 
   // 🔮 Prediction (submit)
@@ -178,28 +239,29 @@ export default function Game() {
     if (hasVoted || !opt) return;
     setSelectedOption(opt);
     setHasVoted(true);
-
     socket.emit("submitPrediction", {
       roomCode,
       predictedOption: opt,
-      nickname,
+      nickname: nickname,
       userId,
     });
+
+    setShowPredictionSuccess(true);
+    setTimeout(() => navigate("/dashboard"), 5000);
   };
 
-  // 🔮 End Prediction (host selects correct option)
+  
   const handleEndPrediction = (correctOption) => {
-    if (isHost) {
-      socket.emit("endPrediction", { roomCode, correctOption });
-    }
+    if (isHost) socket.emit("endPrediction", { roomCode, correctOption });
+    navigate("/dashboard");
   };
 
-  // 🛑 End round early (host only, classic)
+  
   const handleEndRound = () => {
     if (isHost) socket.emit("endRound", { roomCode });
   };
 
-  // ✅ Chaos Flash Screen (Classic vote success)
+  
   if (showVoteSuccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white relative overflow-hidden">
@@ -221,23 +283,50 @@ export default function Game() {
     );
   }
 
+  
+  if (showPredictionSuccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black text-white relative overflow-hidden">
+        <Confetti
+          width={windowSize.width}
+          height={windowSize.height}
+          numberOfPieces={300}
+          gravity={0.15}
+          recycle={false}
+        />
+        <div className="text-center animate-pulse">
+          <h1 className="text-5xl font-extrabold text-green-400 mb-6">
+            🔒 Prediction Locked In!
+          </h1>
+          <p className="text-orange-300 text-2xl">Good luck…</p>
+          <p className="text-gray-400 mt-3 text-sm">(Redirecting to Dashboard)</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!gameData) return <p className="text-white">Loading game...</p>;
 
-  // ✅ Results only mode (works for both Classic + Prediction)
+  
   if (viewResults && results) {
     return (
       <div className="min-h-screen bg-[#0b0b0e] text-white flex flex-col items-center justify-center p-6">
         <h2 className="text-3xl font-bold text-orange-400 mb-6">Game Results 🏆</h2>
         <h3 className="text-xl mb-2 text-green-400">Question:</h3>
-        <p className="text-2xl mb-6">{results.question || gameData.question}</p>
+        <p className="text-2xl mb-6">
+          {results.question || gameData.question}
+        </p>
 
         {/* Classic results */}
         {results.results?.optionVotes &&
-          Object.entries(results.results.optionVotes || {}).map(([opt, count], idx) => (
-            <div key={idx} className="text-lg mb-2">
-              <span className="text-yellow-400 font-bold">{opt}:</span> {count} votes
-            </div>
-          ))}
+          Object.entries(results.results.optionVotes || {}).map(
+            ([opt, count], idx) => (
+              <div key={idx} className="text-lg mb-2">
+                <span className="text-yellow-400 font-bold">{opt}:</span>{" "}
+                {count} votes
+              </div>
+            )
+          )}
 
         {/* Prediction results */}
         {results.correctOption && (
@@ -246,7 +335,14 @@ export default function Game() {
               ✅ Correct Answer: {results.correctOption}
             </p>
             <p className="text-lg text-yellow-400 mb-2">
-              Winners: {results.winners?.length ? results.winners.join(", ") : "None"}
+              Winners:{" "}
+              {(
+                results.winners && results.winners.length > 0
+                  ? results.winners
+                  : gameData?.winner && gameData.winner.length > 0
+                  ? gameData.winner
+                  : []
+              ).join(", ") || "None"}
             </p>
             <h4 className="text-lg text-white mb-2">🏆 Scoreboard</h4>
             {results.scores &&
@@ -279,23 +375,12 @@ export default function Game() {
       </h2>
 
       {/* Classic Mode UI */}
-      {gameData.mode === "classic" && results ? (
-        <div className="text-center">
-          <h3 className="text-xl mb-2 text-green-400">Round Results</h3>
-          <p className="text-2xl mb-4">{results.question}</p>
-          {Object.entries(results.results.optionVotes || {}).map(([opt, count], idx) => (
-            <div key={idx} className="text-lg">
-              <span className="text-yellow-400 font-bold">{opt}:</span> {count} votes
-            </div>
-          ))}
-          <p className="mt-4 text-lg text-pink-400">
-            🏆 Winner: <span className="font-bold">{results.winner || "No votes"}</span>
-          </p>
-        </div>
-      ) : gameData.mode === "classic" && roundActive ? (
+      {gameData.mode === "classic" && roundActive && (
         <div className="text-center max-w-xl w-full">
           <p className="text-sm mb-2 text-white/50">Room: {roomCode}</p>
-          <h3 className="text-2xl font-semibold mb-6">{gameData.question}</h3>
+          <h3 className="text-2xl font-semibold mb-6">
+            {gameData.question}
+          </h3>
           {gameData.options?.map((opt, i) => (
             <button
               key={i}
@@ -313,14 +398,24 @@ export default function Game() {
           <div className="mt-6 text-lg font-bold text-orange-400">
             Time left: {timeLeft ?? "--"}s
           </div>
+          {isHost && (
+            <button
+              onClick={handleEndRound}
+              className="mt-6 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
+            >
+              End Round Now
+            </button>
+          )}
         </div>
-      ) : null}
+      )}
 
       {/* Prediction Mode UI */}
       {gameData.mode === "prediction" && !results && (
         <div className="text-center max-w-xl w-full">
           <p className="text-sm mb-2 text-white/50">Room: {roomCode}</p>
-          <h3 className="text-2xl font-semibold mb-6">{gameData.question}</h3>
+          <h3 className="text-2xl font-semibold mb-6">
+            {gameData.question}
+          </h3>
           {!hasVoted ? (
             gameData.options?.map((opt, i) => (
               <button
@@ -338,18 +433,24 @@ export default function Game() {
             ))
           ) : (
             <p className="text-green-400 text-xl">
-              ✅ Locked in prediction: <span className="font-bold">{selectedOption}</span>
+              ✅ Locked in prediction:{" "}
+              <span className="font-bold">{selectedOption}</span>
             </p>
           )}
 
           {/* Host-only button to end prediction */}
-          {isHost && hasVoted && (
+          {isHost && (
             <div className="mt-6">
-              <h4 className="text-lg mb-2 text-white">Mark the correct answer:</h4>
+              <h4 className="text-lg mb-2 text-white">
+                Mark the correct answer:
+              </h4>
               {gameData.options?.map((opt, i) => (
                 <button
                   key={i}
-                  onClick={() => handleEndPrediction(opt)}
+                  onClick={() => {
+                    setPendingCorrectOption(opt);
+                    setShowEndModal(true);
+                  }}
                   className="px-4 py-2 m-1 bg-red-500 hover:bg-red-600 rounded-lg"
                 >
                   {opt}
@@ -360,17 +461,44 @@ export default function Game() {
         </div>
       )}
 
+      
       {hasVoted && !showVoteSuccess && gameData.mode === "classic" && (
         <p className="mt-4 text-sm text-orange-300">Vote submitted ✅</p>
       )}
 
-      {isHost && roundActive && gameData.mode === "classic" && (
-        <button
-          onClick={handleEndRound}
-          className="mt-6 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
-        >
-          End Round Now
-        </button>
+      
+      {showEndModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-[#1c1c1f] p-6 rounded-xl shadow-lg w-full max-w-sm border border-orange-500">
+            <h2 className="text-xl font-bold text-orange-400 mb-4">
+              End Prediction Game?
+            </h2>
+            <p className="text-white mb-6">
+              You are marking{" "}
+              <span className="font-bold text-green-400">
+                {pendingCorrectOption}
+              </span>{" "}
+              as the correct answer.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setShowEndModal(false)}
+                className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleEndPrediction(pendingCorrectOption);
+                  setShowEndModal(false);
+                }}
+                className="flex-1 py-2 bg-red-500 hover:bg-red-600 rounded-lg text-white font-bold"
+              >
+                End Game
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

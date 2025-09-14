@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   nickname: { type: String, required: true },
 
-  // ✅ Game history using refs
+  
   currentGames: [{ type: mongoose.Schema.Types.ObjectId, ref: "Game" }],
   pastGames: [{ type: mongoose.Schema.Types.ObjectId, ref: "Game" }],
 });

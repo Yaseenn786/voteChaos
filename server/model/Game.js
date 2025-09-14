@@ -2,21 +2,21 @@
 import mongoose from "mongoose";
 
 const voteSchema = new mongoose.Schema({
-  playerId: { type: String, required: true }, // socket.id (unique per connection)
+  playerId: { type: String, required: true }, 
   nickname: { type: String, required: true },
   option: { type: String, required: true },
 });
 
 const playerSchema = new mongoose.Schema({
-  id: { type: String, required: true }, // socket.id
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // link to User if logged in
+  id: { type: String, required: true }, 
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, 
   name: { type: String, required: true },
 });
 
 // 🔮 Prediction Mode Schema
 const predictionSchema = new mongoose.Schema({
-  playerId: { type: String, required: true }, // socket.id
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // link to User if logged in
+  playerId: { type: String, required: true }, 
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, 
   nickname: { type: String, required: true },
   predictedOption: { type: String, required: true },
   isCorrect: { type: Boolean, default: null },
@@ -40,7 +40,7 @@ const gameSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["waiting", "voting", "prediction", "finished"], // 🔮 added "prediction"
+      enum: ["waiting", "voting", "prediction", "finished"], 
       default: "waiting",
     },
 
@@ -57,7 +57,7 @@ const gameSchema = new mongoose.Schema(
       totalVotes: { type: Number, default: 0 },
     },
 
-    winner: { type: String, default: null }, // ✅ store winner nickname
+    winner: { type: [String], default: [] }, 
   },
   { timestamps: true }
 );

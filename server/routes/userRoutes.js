@@ -6,7 +6,7 @@ import Game from "../model/Game.js";
 
 const router = express.Router();
 
-// Middleware to check token
+
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ message: "No token" });
@@ -21,7 +21,7 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-// ✅ Profile route
+
 router.get("/profile", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId)
@@ -36,33 +36,60 @@ router.get("/profile", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Add a game to currentGames
+
 router.post("/:userId/currentGames", async (req, res) => {
   try {
     const { gameId } = req.body;
-    await User.findByIdAndUpdate(req.params.userId, {
-      $addToSet: { currentGames: gameId },
+    console.log("🟠 currentGames route called:", {
+      userId: req.params.userId,
+      gameId,
     });
-    res.json({ success: true });
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.userId,
+      { $addToSet: { currentGames: gameId } },
+      { new: true } 
+    ).populate("currentGames pastGames");
+
+    console.log("✅ After add → currentGames:", updatedUser.currentGames);
+    res.json({ success: true, currentGames: updatedUser.currentGames });
   } catch (err) {
     console.error("Error adding currentGame:", err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
-// ✅ Move game from current → past
+
 router.post("/:userId/moveToPast", async (req, res) => {
   try {
     const { gameId } = req.body;
-    await User.findByIdAndUpdate(req.params.userId, {
-      $pull: { currentGames: gameId },
-      $addToSet: { pastGames: gameId },
+    console.log("🟠 moveToPast route called:", {
+      userId: req.params.userId,
+      gameId,
     });
-    res.json({ success: true });
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.userId,
+      {
+        $pull: { currentGames: gameId },
+        $addToSet: { pastGames: gameId },
+      },
+      { new: true }
+    ).populate("currentGames pastGames");
+
+    console.log("✅ After move → currentGames:", updatedUser.currentGames);
+    console.log("✅ After move → pastGames:", updatedUser.pastGames);
+
+    res.json({
+      success: true,
+      currentGames: updatedUser.currentGames,
+      pastGames: updatedUser.pastGames,
+    });
   } catch (err) {
     console.error("Error moving to pastGames:", err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
+
 
 export default router;

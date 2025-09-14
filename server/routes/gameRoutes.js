@@ -4,9 +4,7 @@ import { nanoid } from "nanoid";
 
 const router = express.Router();
 
-/**
- * ✅ Create Classic Vote Game (starts immediately)
- */
+
 router.post("/classic", async (req, res) => {
   try {
     const { hostId, hostName, question, options, timer } = req.body;
@@ -24,7 +22,7 @@ router.post("/classic", async (req, res) => {
       question,
       options,
       timer,
-      status: "voting", // 🚀 game starts immediately
+      status: "voting", 
       timerEnd: new Date(Date.now() + timer * 1000),
       players: [{ id: hostId, name: hostName }],
       votes: [],
@@ -39,9 +37,39 @@ router.post("/classic", async (req, res) => {
   }
 });
 
-/**
- * ✅ Join Game by roomCode
- */
+
+router.post("/prediction", async (req, res) => {
+  try {
+    const { hostId, hostName, question, options } = req.body;
+    console.log("🟢 Prediction payload:", { hostId, hostName, question, options });
+
+    if (!hostId || !hostName || !question || !options || options.length < 2) {
+      return res.status(400).json({ error: "Invalid game data" });
+    }
+
+    const roomCode = nanoid(6).toUpperCase();
+
+    const game = new Game({
+      mode: "prediction",
+      roomCode,
+      host: { id: hostId, name: hostName },
+      question,
+      options,
+      status: "prediction", 
+      players: [{ id: hostId, name: hostName }],
+      predictions: [],
+    });
+
+    await game.save();
+
+    res.status(201).json({ success: true, roomCode, game });
+  } catch (err) {
+    console.error("❌ Error creating prediction game:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 router.post("/join", async (req, res) => {
   try {
     const { playerId, playerName, roomCode } = req.body;
@@ -51,7 +79,7 @@ router.post("/join", async (req, res) => {
       return res.status(404).json({ error: "Game not found or already finished" });
     }
 
-    // prevent duplicates
+    
     if (!game.players.find((p) => p.id === playerId)) {
       game.players.push({ id: playerId, name: playerName });
       await game.save();
@@ -64,15 +92,13 @@ router.post("/join", async (req, res) => {
   }
 });
 
-/**
- * ✅ Get all current (active/voting) games for a user
- */
+
 router.get("/current/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
     const games = await Game.find({
-      status: "voting",
+      status: { $in: ["voting", "prediction"] }, 
       $or: [{ "players.id": userId }, { "host.id": userId }],
     }).sort({ createdAt: -1 });
 
@@ -83,9 +109,7 @@ router.get("/current/:userId", async (req, res) => {
   }
 });
 
-/**
- * ✅ Get all past (finished) games for a user
- */
+
 router.get("/past/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -102,9 +126,7 @@ router.get("/past/:userId", async (req, res) => {
   }
 });
 
-/**
- * ✅ Get single game by roomCode
- */
+
 router.get("/:roomCode", async (req, res) => {
   try {
     const { roomCode } = req.params;

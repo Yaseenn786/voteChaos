@@ -26,7 +26,7 @@ const MODES = [
 ];
 
 export default function ModePickerModal({ open, onClose, onSelect }) {
-  // Always call hooks; gate their effect by `open`
+  
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -40,7 +40,7 @@ export default function ModePickerModal({ open, onClose, onSelect }) {
 
   return createPortal(
     <div className="fixed inset-0 z-[100000] bg-[#0b0b0e] text-white">
-      {/* Header (sticky) */}
+      
       <div className="sticky top-0 z-10 flex items-center justify-between px-6 md:px-10 py-4 border-b border-white/10 bg-[#0b0b0e]">
         <h2 className="text-2xl md:text-3xl font-extrabold tracking-wide">
           Choose Game Mode
@@ -54,11 +54,11 @@ export default function ModePickerModal({ open, onClose, onSelect }) {
         </button>
       </div>
 
-      {/* Content (fills screen, scrolls if needed) */}
+      
       <div className="h-[calc(100vh-64px)] overflow-auto px-6 md:px-10 py-6 md:py-8">
         <p className="text-white/70 mb-6 md:mb-8">Pick how you want to play.</p>
 
-        {/* Cards grid */}
+        
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {MODES.map((m) => (
             <button

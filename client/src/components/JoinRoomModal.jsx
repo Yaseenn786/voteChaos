@@ -13,13 +13,13 @@ export default function JoinRoomModal({ onClose, onSubmit }) {
 
     let roomCode = inputValue.trim();
 
-    // ✅ Extract code if a full link is pasted
+    
     if (roomCode.includes("/room/")) {
       try {
         const url = new URL(roomCode);
-        roomCode = url.pathname.split("/").pop(); // last segment
+        roomCode = url.pathname.split("/").pop(); 
       } catch {
-        // fallback: regex extract after /room/
+        
         const match = roomCode.match(/room\/([^/]+)/);
         if (match) roomCode = match[1];
       }
@@ -30,7 +30,7 @@ export default function JoinRoomModal({ onClose, onSubmit }) {
       return;
     }
 
-    onSubmit(roomCode.toUpperCase()); // send to parent
+    onSubmit(roomCode.toUpperCase()); 
     onClose();
   };
 

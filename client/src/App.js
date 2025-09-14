@@ -6,7 +6,7 @@ import Signup from "./signUp";
 import Dashboard from "./Dashboard";
 import GameCreatedScreen from "./components/GameCreatedScreen";
 import Game from "./Game";
-import { api } from "./services/api"; // ✅ centralized API
+import { api } from "./services/api"; 
 
 function App() {
   const [user, setUser] = useState(null);
@@ -18,14 +18,14 @@ function App() {
 
       if (token) {
         try {
-          // ✅ Always get user from DB
+          
           const response = await api.getProfile();
           if (response.user) {
             setUser(response.user);
           }
         } catch (error) {
           console.error("Failed to fetch user profile:", error);
-          localStorage.removeItem("token"); // clear bad token
+          localStorage.removeItem("token"); 
         }
       }
 
@@ -46,13 +46,13 @@ function App() {
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
 
-        {/* Protect dashboard */}
+        
         <Route
           path="/dashboard"
           element={user ? <Dashboard user={user} /> : <Navigate to="/login" />}
         />
 
-        {/* Game routes */}
+        
         <Route path="/game-created/:roomCode" element={<GameCreatedScreen />} />
         <Route path="/game" element={<Game />} />
         <Route path="/room/:roomCode" element={<Game />} />
